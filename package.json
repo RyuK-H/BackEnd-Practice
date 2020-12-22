@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/RyuK-H/BackEnd-Practice#readme",
   "dependencies": {
+    "bcrypt": "^5.0.0",
     "body-parser": "^1.19.0",
     "express.js": "^1.0.0",
     "mongoose": "^5.11.8"
