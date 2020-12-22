@@ -1,0 +1,16 @@
+{
+  "name": "backend-practice",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm run backend --prefix server\" \"npm run start --prefix client"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RyuK-H/BackEnd-Practice.git"
+  },
+  "dependencies": {
+    "concurrently": "^5.3.0"
+  },
+  "license": "ISC",
+  "author": "RyuK-H"
+}
