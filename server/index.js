@@ -1,102 +1,102 @@
-const express = require('express')
-const app = express()
-const port = 5000
-const { User } = require("./models/User")
-const bodyParser = require('body-parser')
-const cookieParser = require('cookie-parser')
-const config = require("./config/key")
-const {auth} = require("./middleware/auth")
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
+const saltRounds = 10
+const jwt = require('jsonwebtoken');
 
-// application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded({extended: true}));
-// application/json
-app.use(bodyParser.json());
-app.use(cookieParser());
 
-const mongoose = require('mongoose')
-mongoose.connect(config.mongoURI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    useCreateIndex: true,
-    useFindAndModify: false
-}).then(() => console.log("MongoDB Connected.."))
-  .catch(error => console.log(error))
-
-app.get('/', (req, res) => {
-  res.send('Hello World!')
+const userSchema = mongoose.Schema({
+    name: {
+        type: String,
+        maxlength: 50
+    },
+    email: {
+        type: String,
+        trim: true,
+        unique: 1
+    },
+    password: {
+        type: String,
+        minlength: 5
+    },
+    lastname: {
+        type: String,
+        maxlength: 50
+    },
+    role: {
+        type: Number,
+        default: 0
+    },
+    image: String,
+    token: {
+        type: String
+    },
+    tokenExp: {
+        type: Number
+    }
 })
 
-app.post("/api/users/register", (req, res) => {
-    const user = new User(req.body);
 
-    user.save((err, userInfo) => {
-        if(err) return res.json({success: false, err})
-        return res.status(200).json({
-            success: true
+userSchema.pre('save', function (next) {
+    var user = this;
+    if (user.isModified('password')) {
+        //비밀번호를 암호화 시킨다.
+        bcrypt.genSalt(saltRounds, function (err, salt) {
+            if (err) return next(err)
+
+            bcrypt.hash(user.password, salt, function (err, hash) {
+                if (err) return next(err)
+                user.password = hash
+                next()
+            })
         })
-    });
+    } else {
+        next()
+    }
 })
 
-app.post("/api/users/login", (req, res) => {
-  const user = new User(req.body);
 
-  User.findOne({ email: user.email }, (err, userInfo) => {
-    if(!userInfo) {
-      return res.json({
-        loginSuccess: false,
-        message: "제공된 이메일에 해당하는 유저가 없습니다."
-      })
-    }
-  })
+userSchema.methods.comparePassword = function (plainPassword, cb) {
 
-  user.comparePassword(user.password, (err, isMatch) => {
-    if(!isMatch) {
-      return res.json({ loginSuccess: false, message: "비밀번호가 틀렸습니다."})
-    } 
-    user.generateToken((err, user) => {
-      console.log(user)
-
-      if(err) {
-       return res.status(400).send(err);
-      }
-
-      return res.cookie("x_auth", user.token)
-      .status(200)
-      .json({loginSuccess: true, userId: user._id})
+    //plainPassword 1234567    암호회된 비밀번호 $2b$10$l492vQ0M4s9YUBfwYkkaZOgWHExahjWC
+    bcrypt.compare(plainPassword, this.password, function (err, isMatch) {
+        if (err) return cb(err);
+        cb(null, isMatch);
     })
-  })
-})
+}
 
-app.get('/api/users/auth', auth, (req, res) => {
-  res.status(200).json({
-    _id: req.user._id,
-    isAdmin: req.user.role === 0 ? flase : true,
-    isAuth: true,
-    email: req.user.email,
-    name: req.user.name,
-    lastname: req.user.lastname,
-    role: req.user.role,
-    image: req.user.image
-  })
-})
+userSchema.methods.generateToken = function (cb) {
+    var user = this;
+    // console.log('user._id', user._id)
 
-app.get('/api/users/logout', auth, (req, res) => {
-  User.findOneAndUpdate({_id: req.user._id},
-    { token: "" }, 
-    (err, user) => {
-      console.log(req.user._id)
-      if(err) return res.json({ success: false, err });
-      return res.status(200).send({
-        success: true
-      })
-    }
-  )
-})
+    // jsonwebtoken을 이용해서 token을 생성하기 
+    var token = jwt.sign(user._id.toHexString(), 'secretToken')
+    // user._id + 'secretToken' = token 
+    // -> 
+    // 'secretToken' -> user._id
 
-app.get("/api/hello", (req, res) => {
-  res.send("안녕하세요~")
-})
+    user.token = token
+    user.save(function (err, user) {
+        if (err) return cb(err)
+        cb(null, user)
+    })
+}
 
-app.listen(port, () => {
-  console.log(`Example app listening at http://localhost:${port}`)
-})
+userSchema.statics.findByToken = function(token, cb) {
+    var user = this;
+    // user._id + ''  = token
+    //토큰을 decode 한다. 
+    jwt.verify(token, 'secretToken', function (err, decoded) {
+        //유저 아이디를 이용해서 유저를 찾은 다음에 
+        //클라이언트에서 가져온 token과 DB에 보관된 토큰이 일치하는지 확인
+        user.findOne({ "_id": decoded, "token": token }, function (err, user) {
+            if (err) return cb(err);
+            cb(null, user)
+        })
+    })
+}
+
+
+
+const User = mongoose.model('User', userSchema)
+
+module.exports = { User }
